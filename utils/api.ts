@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import axios from "axios";
+import axios, { type AxiosRequestConfig } from "axios";
 import { Platform } from "react-native";
 import type { OnboardingData } from "@/components/Onboarding/OnboardingScreen";
 
@@ -32,6 +32,53 @@ function resolveBaseUrl(): string {
 }
 
 export const BASE_URL = resolveBaseUrl();
+
+// Prints the resolved backend URL to the Metro / Expo Go console so it's easy
+// to confirm which backend the app is actually talking to (dev only).
+if (__DEV__) {
+  console.log("[API] BASE_URL =", BASE_URL);
+}
+
+/**
+ * Shared axios instance. The 60s timeout matters for Render's free tier:
+ * a sleeping instance can take up to ~50s to wake up on the first request
+ * (axios's default is "wait forever", which just looks like a hang).
+ */
+const http = axios.create({ timeout: 60_000 });
+
+type RequestConfig = AxiosRequestConfig & {
+  /**
+   * Retry once when the request comes back 404. Pass true only where a 404
+   * can never be a legitimate response (e.g. create-or-get calls) — Render's
+   * edge occasionally answers the first request with 404 while the free-tier
+   * instance is still waking up, and the retry then succeeds.
+   */
+  retryOn404?: boolean;
+};
+
+/** Single request with one automatic retry on transient failures. */
+async function request<T>(config: RequestConfig): Promise<T> {
+  const { retryOn404 = false, ...axiosConfig } = config;
+
+  const attempt = async () => (await http.request<T>(axiosConfig)).data;
+
+  try {
+    return await attempt();
+  } catch (err) {
+    const retriable =
+      axios.isAxiosError(err) &&
+      (err.code === "ECONNABORTED" || // timeout
+        err.code === "ERR_NETWORK" || // connection failed / refused
+        (err.response?.status ?? 0) >= 500 || // server error
+        (retryOn404 && err.response?.status === 404)); // cold-start 404
+
+    if (!retriable) throw err;
+
+    // Brief pause so a waking instance can finish booting before retrying.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return attempt();
+  }
+}
 
 /* ---------------------------------- Types ---------------------------------- */
 
@@ -104,8 +151,12 @@ export type MetricsUpdateInput = {
  * the full user (with their single `metric`, if onboarding is complete).
  */
 export async function checkUser(data: CheckUserInput): Promise<UserOut> {
-  const response = await axios.post(`${BASE_URL}/users/check`, data);
-  return response.data as UserOut;
+  return request<UserOut>({
+    method: "post",
+    url: `${BASE_URL}/users/check`,
+    data,
+    retryOn404: true,
+  });
 }
 
 /**
@@ -124,15 +175,19 @@ export async function saveUserOnboarding(
       "Cannot save onboarding: exercise level and goal are required"
     );
   }
-  const response = await axios.post(`${BASE_URL}/meals/onboarding`, {
-    height: Number(data.height),
-    weight: Number(data.weight),
-    age: Number(data.age),
-    exerciseLevel: data.exerciseLevel,
-    goal: data.goal,
-    clerk_id: clerkId,
+  return request<MetricsOut>({
+    method: "post",
+    url: `${BASE_URL}/meals/onboarding`,
+    data: {
+      height: Number(data.height),
+      weight: Number(data.weight),
+      age: Number(data.age),
+      exerciseLevel: data.exerciseLevel,
+      goal: data.goal,
+      clerk_id: clerkId,
+    },
+    retryOn404: true,
   });
-  return response.data as MetricsOut;
 }
 
 /**
@@ -145,11 +200,12 @@ export async function updateUserMetrics(
   input: MetricsUpdateInput,
   clerkId: string
 ): Promise<MetricsOut> {
-  const response = await axios.put(`${BASE_URL}/meals/metrics`, {
-    ...input,
-    clerk_id: clerkId,
+  return request<MetricsOut>({
+    method: "put",
+    url: `${BASE_URL}/meals/metrics`,
+    data: { ...input, clerk_id: clerkId },
+    retryOn404: true,
   });
-  return response.data as MetricsOut;
 }
 
 /**
@@ -165,23 +221,30 @@ export async function getMealHistory(
   start: Date,
   end: Date
 ): Promise<HistoryResponse> {
-  const response = await axios.get(`${BASE_URL}/meals/history`, {
+  return request<HistoryResponse>({
+    method: "get",
+    url: `${BASE_URL}/meals/history`,
     params: {
       clerk_id: clerkId,
       start: start.toISOString(),
       end: end.toISOString(),
     },
+    retryOn404: true,
   });
-  return response.data as HistoryResponse;
 }
 
 /** GET /meals/{id} — fetches a single meal by its database id. */
 export async function getMealById(mealId: number): Promise<MealOut> {
-  const response = await axios.get(`${BASE_URL}/meals/${mealId}`);
-  return response.data as MealOut;
+  return request<MealOut>({
+    method: "get",
+    url: `${BASE_URL}/meals/${mealId}`,
+  });
 }
 
 /** DELETE /meals/{id} — deletes a single meal by its database id. */
 export async function deleteMeal(mealId: number): Promise<void> {
-  await axios.delete(`${BASE_URL}/meals/${mealId}`);
+  await request<void>({
+    method: "delete",
+    url: `${BASE_URL}/meals/${mealId}`,
+  });
 }
