@@ -1,6 +1,5 @@
-import { Ionicons } from '@expo/vector-icons'
 import React, { type ReactNode } from 'react'
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native'
+import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -13,8 +12,6 @@ type AuthShellProps = {
     children: ReactNode
     /** Optional row rendered under the card (e.g. the switch-to-other-auth link). */
     footer?: ReactNode
-    /** Ionicons glyph shown in the brand badge. */
-    badgeIcon?: keyof typeof Ionicons.glyphMap
 }
 
 /**
@@ -22,13 +19,7 @@ type AuthShellProps = {
  * their verification states). Matches the warm `#F5F4F0` background, green
  * accents and white rounded-card language used across Home and History.
  */
-export default function AuthShell({
-    title,
-    subtitle,
-    children,
-    footer,
-    badgeIcon = 'nutrition',
-}: AuthShellProps) {
+export default function AuthShell({ title, subtitle, children, footer }: AuthShellProps) {
     return (
         <SafeAreaView className="flex-1 bg-[#F5F4F0]" edges={['top', 'bottom']}>
             {/* soft decorative blobs */}
@@ -53,16 +44,20 @@ export default function AuthShell({
                         {/* Brand mark + heading */}
                         <View className="items-center">
                             <View
-                                className="h-16 w-16 items-center justify-center rounded-3xl bg-[#E7F2E9]"
+                                className="h-16 w-16"
                                 style={{
                                     shadowColor: '#2F7A3E',
-                                    shadowOpacity: 0.15,
+                                    shadowOpacity: 0.2,
                                     shadowRadius: 12,
                                     shadowOffset: { width: 0, height: 6 },
                                     elevation: 4,
                                 }}
                             >
-                                <Ionicons name={badgeIcon} size={30} color="#4E9F5A" />
+                                <Image
+                                    source={require('../../assets/images/logo.png')}
+                                    className="h-16 w-16"
+                                    resizeMode="contain"
+                                />
                             </View>
                             <Text className="mt-5 text-2xl font-bold text-gray-900">{title}</Text>
                             {subtitle ? (

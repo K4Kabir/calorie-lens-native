@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "auth-mobile-setup",
-    "slug": "auth-mobile-setup",
+    "name": "CalorieMate",
+    "slug": "caloriemate",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#2F7A3E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"

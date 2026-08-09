@@ -1,6 +1,5 @@
-import { Ionicons } from '@expo/vector-icons'
 import React from 'react'
-import { ActivityIndicator, Text, View } from 'react-native'
+import { ActivityIndicator, Image, Text, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -26,16 +25,20 @@ export default function LoadingScreen({
             <View className="flex-1 items-center justify-center">
                 <Animated.View entering={FadeInDown.duration(350)} className="items-center">
                     <View
-                        className="h-16 w-16 items-center justify-center rounded-3xl bg-[#E7F2E9]"
+                        className="h-16 w-16"
                         style={{
                             shadowColor: '#2F7A3E',
-                            shadowOpacity: 0.15,
+                            shadowOpacity: 0.2,
                             shadowRadius: 12,
                             shadowOffset: { width: 0, height: 6 },
                             elevation: 4,
                         }}
                     >
-                        <Ionicons name="nutrition" size={30} color="#4E9F5A" />
+                        <Image
+                            source={require('../assets/images/logo.png')}
+                            className="h-16 w-16"
+                            resizeMode="contain"
+                        />
                     </View>
                     <ActivityIndicator size="large" color="#4E9F5A" className="mt-7" />
                     <Text className="mt-4 text-sm text-gray-500">{message}</Text>
