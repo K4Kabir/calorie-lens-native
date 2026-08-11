@@ -144,6 +144,41 @@ export type MetricsUpdateInput = {
   goal: string;
 };
 
+/** Mirrors the backend MealAnalyzeResponse from POST /meals/analyze. */
+export type MealAnalysisResult = {
+  title: string;
+  description?: string | null;
+  time: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  kcal: number;
+};
+
+/** Payload of POST /meals/create — persists an already-analyzed meal. */
+export type MealCreateInput = {
+  title: string;
+  description: string;
+  time: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  kcal: number;
+  user_id: number;
+};
+
+/**
+ * React Native's FormData accepts `{ uri, name, type }` objects as file parts.
+ * The photo is uploaded as raw binary (multipart), never base64.
+ */
+function photoFormPart(photoUri: string): {
+  uri: string;
+  name: string;
+  type: string;
+} {
+  return { uri: photoUri, name: "meal.jpg", type: "image/jpeg" };
+}
+
 /* -------------------------------- Endpoints -------------------------------- */
 
 /**
@@ -156,6 +191,64 @@ export async function checkUser(data: CheckUserInput): Promise<UserOut> {
     url: `${BASE_URL}/users/check`,
     data,
     retryOn404: true,
+  });
+}
+
+/**
+ * POST /meals/analyze — uploads the meal photo as multipart binary to the AI,
+ * which returns the estimated meal data (title, macros, kcal) without saving.
+ *
+ * `description` is an optional note from the user about the meal (cooking
+ * method, portion, ingredients, ...); when provided, the AI refines the
+ * analysis using both the photo and this description.
+ */
+export async function analyzeMealImage(
+  photoUri: string,
+  description?: string
+): Promise<MealAnalysisResult> {
+  const form = new FormData();
+  form.append("image", photoFormPart(photoUri) as unknown as Blob);
+  const trimmed = description?.trim();
+  if (trimmed) {
+    form.append("description", trimmed);
+  }
+  return request<MealAnalysisResult>({
+    method: "post",
+    url: `${BASE_URL}/meals/analyze`,
+    data: form,
+  });
+}
+
+/**
+ * POST /meals/create — persists an analyzed meal. Meal fields are sent as
+ * multipart form data and the photo (if any) as a raw binary file; the
+ * backend uploads it to Cloudinary and stores only the URL in the DB.
+ *
+ * Returns the saved meal row (with the Cloudinary image URL, if any).
+ *
+ * Note: retryOn404 is intentionally NOT set — retrying a create that already
+ * succeeded would insert a duplicate meal row.
+ */
+export async function createMeal(
+  data: MealCreateInput,
+  photoUri: string | null
+): Promise<MealOut> {
+  const form = new FormData();
+  if (photoUri) {
+    form.append("image", photoFormPart(photoUri) as unknown as Blob);
+  }
+  form.append("title", data.title);
+  form.append("description", data.description);
+  form.append("time", data.time);
+  form.append("protein", String(data.protein));
+  form.append("carbs", String(data.carbs));
+  form.append("fat", String(data.fat));
+  form.append("kcal", String(data.kcal));
+  form.append("user_id", String(data.user_id));
+  return request<MealOut>({
+    method: "post",
+    url: `${BASE_URL}/meals/create`,
+    data: form,
   });
 }
 

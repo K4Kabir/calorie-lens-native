@@ -1,23 +1,11 @@
 import Button from '@/components/ui/Button'
 import { Feather } from '@expo/vector-icons'
-import axios from 'axios'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import React, { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { BASE_URL } from '@/utils/api'
-import { imageToBase64 } from '@/utils/image'
+import { analyzeMealImage, createMeal, type MealAnalysisResult } from '@/utils/api'
 import { useUserContext } from '@/context/UserContext'
-
-type MealAnalysis = {
-    title: string
-    description?: string | null
-    time: string
-    protein: number
-    carbs: number
-    fat: number
-    kcal: number
-}
 
 const MACRO_META = [
     { label: 'Protein', key: 'protein', unit: 'g', color: '#E0685E' },
@@ -30,36 +18,40 @@ export default function FoodDetailsScreen() {
     const { photoUri, nav } = useLocalSearchParams<any>()
     const { user, refreshUser } = useUserContext()
 
-    const [analysis, setAnalysis] = useState<MealAnalysis | null>(null)
-    const [imageBase64, setImageBase64] = useState<string | null>(null)
+    const [analysis, setAnalysis] = useState<MealAnalysisResult | null>(null)
+    const [details, setDetails] = useState('')
     const [analyzing, setAnalyzing] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [logging, setLogging] = useState(false)
 
-    const runAnalysis = useCallback(async () => {
-        if (!photoUri) return
-        setAnalyzing(true)
-        setError(null)
-        try {
-            const base64 = await imageToBase64(photoUri)
-            setImageBase64(base64)
-            const res = await axios.post(`${BASE_URL}/meals/analyze`, {
-                image_base64: base64,
-            })
-            setAnalysis(res.data)
-        } catch (err: any) {
-            setAnalysis(null)
-            setError(
-                err?.response?.data?.detail ??
-                'Something went wrong while analyzing your meal. Please try again.'
-            )
-        } finally {
-            setAnalyzing(false)
-        }
-    }, [photoUri])
+    const runAnalysis = useCallback(
+        async (extraDescription: string) => {
+            if (!photoUri) return
+            setAnalyzing(true)
+            setError(null)
+            try {
+                // The photo (and optional user description) is uploaded as
+                // multipart binary — no base64 encoding.
+                const result = await analyzeMealImage(
+                    photoUri,
+                    extraDescription.trim() || undefined
+                )
+                setAnalysis(result)
+            } catch (err: any) {
+                setAnalysis(null)
+                setError(
+                    err?.response?.data?.detail ??
+                    'Something went wrong while analyzing your meal. Please try again.'
+                )
+            } finally {
+                setAnalyzing(false)
+            }
+        },
+        [photoUri]
+    )
 
     useEffect(() => {
-        runAnalysis()
+        runAnalysis('')
     }, [runAnalysis])
 
     const handleLogFood = async () => {
@@ -71,17 +63,21 @@ export default function FoodDetailsScreen() {
         }
         setLogging(true)
         try {
-            await axios.post(`${BASE_URL}/meals/create`, {
-                title: analysis.title,
-                description: analysis.description ?? '',
-                image: imageBase64 ? `data:image/jpeg;base64,${imageBase64}` : null,
-                time: analysis.time,
-                protein: analysis.protein,
-                carbs: analysis.carbs,
-                fat: analysis.fat,
-                kcal: analysis.kcal,
-                user_id: user.id,
-            })
+            // The photo is uploaded as multipart binary; the backend stores it
+            // in Cloudinary and keeps only the returned URL in the DB.
+            await createMeal(
+                {
+                    title: analysis.title,
+                    description: analysis.description ?? '',
+                    time: analysis.time,
+                    protein: analysis.protein,
+                    carbs: analysis.carbs,
+                    fat: analysis.fat,
+                    kcal: analysis.kcal,
+                    user_id: user.id,
+                },
+                typeof photoUri === 'string' ? photoUri : null
+            )
             // Pull the latest user (with the new meal) so the home screen's
             // list, "eaten" total and calorie ring update immediately.
             await refreshUser()
@@ -123,10 +119,43 @@ export default function FoodDetailsScreen() {
                     </View>
                 </View>
 
-                <View className="flex-1 px-5">
+                <View className="flex-1 px-5 mb-5">
+                    {/* Extra details — re-analyzes the meal with the user's note */}
+                    {photoUri && !analyzing && (
+                        <View className="-mt-6 rounded-3xl bg-white p-5 shadow-sm">
+                            <View className="flex-row items-center gap-2">
+                                <View className="h-7 w-7 items-center justify-center rounded-lg bg-[#E7F2E9]">
+                                    <Feather name="edit-3" size={14} color="#2F7A3E" />
+                                </View>
+                                <Text className="text-xs font-semibold tracking-wide text-gray-400">
+                                    ADD DETAILS
+                                </Text>
+                            </View>
+                            <TextInput
+                                value={details}
+                                onChangeText={setDetails}
+                                placeholder="e.g. Grilled chicken with brown rice, no oil, extra vegetables"
+                                placeholderTextColor="#C4C4C0"
+                                multiline
+                                maxLength={300}
+                                className="mt-3 min-h-[76px] rounded-2xl bg-gray-50 p-3.5 text-sm leading-5 text-gray-900"
+                                style={{ textAlignVertical: 'top', includeFontPadding: false }}
+                            />
+                            <Button
+                                title="Update Analysis"
+                                icon="refresh-cw"
+                                variant="outline"
+                                loading={analyzing}
+                                disabled={analyzing || logging || !details.trim()}
+                                onPress={() => runAnalysis(details)}
+                                className="mt-3"
+                            />
+                        </View>
+                    )}
+
                     {/* Analyzing */}
                     {analyzing && (
-                        <View className="-mt-6 rounded-3xl bg-white p-8 shadow-sm">
+                        <View className="mt-6 rounded-3xl bg-white p-8 shadow-sm">
                             <View className="items-center py-6">
                                 <ActivityIndicator size="large" color="#4E9F5A" />
                                 <Text className="mt-4 text-base font-semibold text-gray-900">
@@ -141,7 +170,7 @@ export default function FoodDetailsScreen() {
 
                     {/* Analysis failed */}
                     {!analyzing && error && (
-                        <View className="-mt-6 rounded-3xl bg-white p-8 shadow-sm">
+                        <View className="mt-6 rounded-3xl bg-white p-8 shadow-sm">
                             <View className="items-center py-4">
                                 <View className="h-14 w-14 items-center justify-center rounded-full bg-red-50">
                                     <Feather name="alert-triangle" size={26} color="#DC2626" />
@@ -155,7 +184,7 @@ export default function FoodDetailsScreen() {
                                 <Button
                                     title="Try Again"
                                     icon="refresh-cw"
-                                    onPress={runAnalysis}
+                                    onPress={() => runAnalysis(details)}
                                     className="mt-5 px-8"
                                 />
                             </View>
@@ -165,7 +194,7 @@ export default function FoodDetailsScreen() {
                     {/* Analysis result */}
                     {!analyzing && !error && analysis && (
                         <>
-                            <View className="-mt-6 rounded-3xl bg-white p-5 shadow-sm">
+                            <View className="mt-6 rounded-3xl bg-white p-5 shadow-sm">
                                 <View className="flex-row items-center justify-between">
                                     <Text className="flex-1 text-xl font-bold text-gray-900">
                                         {analysis.title}
